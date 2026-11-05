@@ -5,9 +5,10 @@ existing photo tree, stores selected metadata in SQLite, and serves a browsing A
 with thumbnails. Original photo contents, filenames, and organization stay untouched.
 No cloud service, telemetry, or external account is required.
 
-This is the initial open-source MVP intended for the **CC-CLI v2** program. Virtual
-smart albums, duplicate detection, physical file organization, and a full album web
-interface are deliberately reserved for [future development](docs/roadmap.md).
+This initial release provides the indexing foundation for NAS owners who want to
+browse their photo libraries locally. Virtual smart albums, duplicate detection,
+physical file organization, and a full album web interface are planned in the
+[roadmap](docs/roadmap.md).
 
 ## What's implemented
 

@@ -1,7 +1,8 @@
-# Roadmap and CC-CLI v2 scope
+# PhotoFlow roadmap
 
-The initial MVP is the foundation for a CC-CLI v2 submission. This repository does
-not claim program acceptance, completed evaluation, or production hardening.
+The initial MVP provides read-only photo indexing, metadata browsing, and
+thumbnails. The next development phase will build on that foundation while
+preserving source-file safety and local control of photo data.
 
 ## Initial MVP delivered
 
@@ -16,9 +17,8 @@ not claim program acceptance, completed evaluation, or production hardening.
 9. Synthetic unit and integration tests, including source-integrity checks.
 10. Docker Compose, GitHub Actions, and setup/API/privacy/operations documentation.
 
-Each milestone is represented by tested, descriptive local Git commits. Hosted CI
-and Docker smoke checks must be run in their respective environments before a
-release; their presence is not a claim that those external checks already ran.
+Hosted CI and Docker smoke checks must pass in their respective environments
+before a release. Their configuration alone does not establish release readiness.
 
 ## Future development tasks — not implemented
 

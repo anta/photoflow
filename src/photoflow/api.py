@@ -59,7 +59,13 @@ def get_photo(photo_id: PhotoId, session: DatabaseSession) -> Photo:
     return find_photo(session, photo_id)
 
 
-@router.get("/photos/{photo_id}/thumbnail", response_class=Response)
+@router.get(
+    "/photos/{photo_id}/thumbnail",
+    response_class=Response,
+    responses={
+        200: {"content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}}}
+    },
+)
 def get_thumbnail(photo_id: PhotoId, session: DatabaseSession, request: Request) -> Response:
     photo = find_photo(session, photo_id)
     try:

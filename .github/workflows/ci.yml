@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "${{ matrix.python }}"
+      - name: Install ExifTool and uv
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libimage-exiftool-perl
+          python -m pip install uv==0.13.7
+      - name: Install locked dependencies
+        run: uv sync --locked --extra dev --python '${{ matrix.python }}'
+      - name: Lint and format
+        run: |
+          uv run --no-sync ruff check .
+          uv run --no-sync ruff format --check .
+      - name: Test with synthetic photos
+        run: uv run --no-sync pytest --cov=photoflow --cov-fail-under=90
+      - name: Check deployment lock and build distributions
+        run: |
+          uv export --locked --no-dev --no-emit-project --no-header --format requirements-txt --output-file "$RUNNER_TEMP/requirements.lock" > /dev/null
+          diff -u requirements.lock "$RUNNER_TEMP/requirements.lock"
+          uv build
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build runtime image
+        run: docker build --tag photoflow:local .
+      - name: Smoke test Compose with a read-only synthetic NAS
+        run: bash scripts/docker-smoke.sh

@@ -1,0 +1,51 @@
+name: photoflow
+
+services:
+  photoflow:
+    image: photoflow:local
+    build:
+      context: .
+    init: true
+    user: "10001:10001"
+    environment:
+      PHOTOFLOW_NAS_ROOT: /photos
+      PHOTOFLOW_DATA_DIR: /data
+      PHOTOFLOW_HOST: 0.0.0.0
+      PHOTOFLOW_PORT: "8000"
+      PHOTOFLOW_THUMBNAIL_SIZE: "${PHOTOFLOW_THUMBNAIL_SIZE:-400}"
+      PHOTOFLOW_THUMBNAIL_QUALITY: "${PHOTOFLOW_THUMBNAIL_QUALITY:-85}"
+      PHOTOFLOW_EXIFTOOL_TIMEOUT: "${PHOTOFLOW_EXIFTOOL_TIMEOUT:-30}"
+    volumes:
+      - type: bind
+        source: "${PHOTOFLOW_NAS_ROOT:?Set PHOTOFLOW_NAS_ROOT to an existing NAS photo directory}"
+        target: /photos
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: state
+        target: /data
+    ports:
+      - "127.0.0.1:${PHOTOFLOW_PORT:-8000}:8000"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,noexec,size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).close()"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+volumes:
+  state:

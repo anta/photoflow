@@ -18,14 +18,6 @@ from photoflow.db import (
 from photoflow.models import Base, Photo
 
 
-@pytest.fixture
-def engine(settings):
-    engine = create_db_engine(settings)
-    migrate(engine)
-    yield engine
-    engine.dispose()
-
-
 def test_migrations_roundtrip_and_match_models(settings):
     engine = create_db_engine(settings)
     try:

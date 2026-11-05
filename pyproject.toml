@@ -21,6 +21,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.3,<10", "pytest-cov>=6,<8", "httpx>=0.28,<1", "ruff>=0.11,<1"]
 
+[project.scripts]
+photoflow = "photoflow.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/photoflow"]
 

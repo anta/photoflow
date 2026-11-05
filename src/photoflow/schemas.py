@@ -2,7 +2,7 @@
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, computed_field, field_serializer
 
 
 class PhotoSummary(BaseModel):
@@ -25,6 +25,13 @@ class PhotoSummary(BaseModel):
     @field_serializer("indexed_at")
     def serialize_indexed_at(self, value: datetime) -> str:
         return value.replace(tzinfo=UTC).isoformat()
+
+    @computed_field
+    @property
+    def thumbnail_url(self) -> str | None:
+        if self.is_missing or self.index_error is not None:
+            return None
+        return f"/api/v1/photos/{self.id}/thumbnail"
 
 
 class PhotoDetail(PhotoSummary):

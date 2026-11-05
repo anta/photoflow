@@ -3,12 +3,13 @@
 from collections.abc import Iterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from photoflow.models import Photo
 from photoflow.schemas import PhotoDetail, PhotoPage
+from photoflow.thumbnails import ThumbnailError, ThumbnailService
 
 router = APIRouter(prefix="/api/v1", tags=["photos"])
 
@@ -56,3 +57,15 @@ def find_photo(session: Session, photo_id: int) -> Photo:
 @router.get("/photos/{photo_id}", response_model=PhotoDetail)
 def get_photo(photo_id: PhotoId, session: DatabaseSession) -> Photo:
     return find_photo(session, photo_id)
+
+
+@router.get("/photos/{photo_id}/thumbnail", response_class=Response)
+def get_thumbnail(photo_id: PhotoId, session: DatabaseSession, request: Request) -> Response:
+    photo = find_photo(session, photo_id)
+    try:
+        content = ThumbnailService(request.app.state.settings).get(photo)
+    except ThumbnailError as error:
+        raise HTTPException(status_code=error.status_code, detail=str(error)) from error
+    except OSError as error:
+        raise HTTPException(status_code=503, detail="Photo storage unavailable") from error
+    return Response(content=content, media_type="image/jpeg")

@@ -44,7 +44,9 @@ def main(argv: list[str] | None = None) -> int:
         else:
             from photoflow.main import create_app
 
-            uvicorn.run(create_app(), host=settings.host, port=settings.port, access_log=False)
+            uvicorn.run(
+                create_app(settings), host=settings.host, port=settings.port, access_log=False
+            )
     except ValidationError:
         print(
             "Invalid configuration; check PHOTOFLOW_* settings and directory separation.",

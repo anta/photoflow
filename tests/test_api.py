@@ -73,3 +73,14 @@ def test_invalid_parameters(client, suffix):
 def test_no_photo_mutation_api(client):
     assert client.post("/api/v1/photos").status_code == 405
     assert client.delete("/api/v1/photos/1").status_code == 405
+
+
+def test_database_failures_do_not_leak_paths_or_query_parameters(client):
+    from unittest.mock import patch
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    with patch.object(Session, "scalar", side_effect=SQLAlchemyError("private absolute path")):
+        response = client.get("/api/v1/photos")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Photo index unavailable"}

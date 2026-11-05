@@ -45,3 +45,14 @@ def test_invalid_thumbnail_size(settings, value):
             thumbnail_size=value,
             _env_file=None,
         )
+
+
+@pytest.mark.parametrize(
+    "name", ["photoflow.sqlite3", "photoflow.sqlite3-wal", "index.lock", "thumbnails"]
+)
+def test_managed_state_symlinks_cannot_write_into_nas(settings, name):
+    settings.prepare_data_dir()
+    (settings.data_dir / name).symlink_to(settings.nas_root / "original.jpg")
+    with pytest.raises(RuntimeError, match="symbolic links"):
+        settings.prepare_data_dir()
+    assert not (settings.nas_root / "original.jpg").exists()

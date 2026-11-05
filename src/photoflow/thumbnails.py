@@ -93,9 +93,14 @@ class ThumbnailService:
         if photo.index_error is not None:
             raise ThumbnailError(409, "Photo needs successful indexing before thumbnail generation")
         try:
+            self.settings.prepare_data_dir()
             with self.nas.open_photo(photo.relative_path) as source:
                 self._check_source(source, photo)
                 path = self.cache_path(photo)
+                if path.is_symlink() or not path.parent.resolve().is_relative_to(
+                    self.settings.data_dir
+                ):
+                    raise ThumbnailError(503, "Unsafe thumbnail cache path")
                 try:
                     content = path.read_bytes()
                 except FileNotFoundError:
@@ -110,3 +115,7 @@ class ThumbnailService:
             raise ThumbnailError(404, "Photo is unavailable") from error
         except OSError as error:
             raise ThumbnailError(503, "Photo or thumbnail storage unavailable") from error
+        except RuntimeError as error:
+            if isinstance(error, ThumbnailError):
+                raise
+            raise ThumbnailError(503, "Thumbnail storage unavailable") from error

@@ -44,4 +44,15 @@ class Settings(BaseSettings):
         return self.data_dir / "thumbnails"
 
     def prepare_data_dir(self) -> None:
+        if self.data_dir.resolve() != self.data_dir:
+            raise RuntimeError("Writable data directory changed after configuration")
+        for path in (
+            self.database_path,
+            self.database_path.with_name(self.database_path.name + "-wal"),
+            self.database_path.with_name(self.database_path.name + "-shm"),
+            self.data_dir / "index.lock",
+            self.thumbnail_dir,
+        ):
+            if path.is_symlink():
+                raise RuntimeError("Managed state paths must not be symbolic links")
         self.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)

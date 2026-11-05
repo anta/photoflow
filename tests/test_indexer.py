@@ -81,3 +81,14 @@ def test_force_reextracts_and_interrupted_runs_are_recovered(settings, engine):
     assert index_library(settings, force=True).updated == 1
     with Session(engine) as session:
         assert session.get(ScanRun, "interrupted").status == "failed"
+
+
+def test_fatal_scan_failure_records_failed_run_without_missing_sweep(settings, engine):
+    with (
+        patch("photoflow.indexer.scan_photos", side_effect=OSError("NAS disconnected")),
+        pytest.raises(OSError),
+    ):
+        index_library(settings)
+    with Session(engine) as session:
+        run = session.scalar(select(ScanRun))
+        assert run.status == "failed" and run.finished_at is not None

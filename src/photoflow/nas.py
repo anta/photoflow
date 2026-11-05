@@ -19,9 +19,11 @@ class UnsafePathError(ValueError):
 
 class NasRoot:
     def __init__(self, root: Path):
-        self.root = root.resolve(strict=True)
-        if not self.root.is_dir():
-            raise ValueError("NAS root must be a directory")
+        # Settings resolves an administrator's configured root once. Do not follow
+        # a replacement root symlink introduced after that validation.
+        self.root = root.absolute()
+        directory_fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        os.close(directory_fd)
 
     @staticmethod
     def _parts(relative_path: str) -> tuple[str, ...]:

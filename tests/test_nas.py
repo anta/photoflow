@@ -40,3 +40,12 @@ def test_refuses_fifo_without_blocking(settings):
     os.mkfifo(settings.nas_root / "pipe.jpg")
     with pytest.raises(UnsafePathError), NasRoot(settings.nas_root).open_photo("pipe.jpg"):
         pytest.fail("FIFO opened")
+
+
+def test_refuses_replaced_root_symlink(settings, tmp_path):
+    settings.nas_root.rmdir()
+    replacement = tmp_path / "other"
+    replacement.mkdir()
+    settings.nas_root.symlink_to(replacement, target_is_directory=True)
+    with pytest.raises(OSError):
+        NasRoot(settings.nas_root)

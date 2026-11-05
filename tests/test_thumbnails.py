@@ -82,3 +82,21 @@ def test_decompression_bombs_are_rejected(settings):
     with patch.object(Image, "MAX_IMAGE_PIXELS", 100), pytest.raises(ThumbnailError) as error:
         service._render(source)
     assert error.value.status_code == 413
+
+
+@pytest.mark.integration
+def test_cache_shard_symlink_cannot_write_into_nas(settings, engine):
+    photo_path = settings.nas_root / "generated.jpg"
+    Image.new("RGB", (120, 80)).save(photo_path)
+    before = photo_path.read_bytes()
+    index_library(settings)
+    settings.thumbnail_dir.mkdir()
+    with Session(engine) as session:
+        photo = session.scalar(select(Photo))
+        service = ThumbnailService(settings)
+        service.cache_path(photo).parent.symlink_to(settings.nas_root, target_is_directory=True)
+        with pytest.raises(ThumbnailError) as error:
+            service.get(photo)
+        assert error.value.status_code == 503
+    assert [p.name for p in settings.nas_root.iterdir()] == ["generated.jpg"]
+    assert photo_path.read_bytes() == before

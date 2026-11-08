@@ -1,8 +1,8 @@
 # PhotoFlow roadmap
 
 PhotoFlow provides read-only photo indexing, metadata browsing, thumbnails, and
-date-based virtual albums. Development builds on that foundation while preserving
-source-file safety and local control of photo data.
+automatic date albums and saved date-range albums. Development builds on that
+foundation while preserving source-file safety and local control of photo data.
 
 ## Initial MVP delivered
 
@@ -28,11 +28,19 @@ index, uses the camera's stored calendar date, and excludes missing/error record
 No photo copies, membership tables, or source-file changes are needed. Synthetic
 tests cover date boundaries, offsets, reindexing, recovery, and source integrity.
 
+## Saved date-range albums delivered
+
+Named, version-1 date-range definitions are persisted through an Alembic migration.
+The API creates, lists, and browses them with stable IDs and inclusive calendar
+dates. Albums can overlap and remain available when empty. Membership is queried
+from the current index and follows rescans without file copies or source changes.
+Synthetic tests cover validation, persistence, upgrades, overlaps, and reindexing.
+
 ## Next milestones — not implemented
 
-1. **Saved rule-based albums and GPS grouping:** persist named, validated rules;
-   allow overlapping date ranges and deterministic offline geographic grouping.
-   Define missing-GPS and boundary behavior without external geocoding.
+1. **Extend saved albums and add GPS grouping:** add editing/deletion when needed,
+   then deterministic offline geographic rules with explicit missing-GPS and
+   boundary behavior. No external geocoding is planned for this step.
 2. **Automatic setup and ongoing indexing:** simplify initial folder/state setup,
    expose progress, and add reliable periodic rescans while preserving process
    locking, partial-scan safeguards, and NAS availability checks.

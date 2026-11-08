@@ -1,4 +1,4 @@
-"""Read-only photo and virtual album browsing routes."""
+"""Photo browsing and virtual album definition routes; originals stay read-only."""
 
 from collections.abc import Iterator
 from typing import Annotated
@@ -8,9 +8,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
-from photoflow.albums import album_filters, list_albums
+from photoflow.albums import album_filters, create_saved_album, list_albums
 from photoflow.models import Photo
-from photoflow.schemas import AlbumSummary, PhotoDetail, PhotoPage
+from photoflow.schemas import AlbumCreate, AlbumSummary, PhotoDetail, PhotoPage
 from photoflow.thumbnails import ThumbnailError, ThumbnailService
 
 router = APIRouter(prefix="/api/v1")
@@ -39,9 +39,16 @@ def photo_page(
     return PhotoPage(items=photos, total=total, limit=limit, offset=offset)
 
 
-@router.get("/albums", response_model=list[AlbumSummary], tags=["albums"])
+@router.get(
+    "/albums", response_model=list[AlbumSummary], response_model_exclude_none=True, tags=["albums"]
+)
 def get_albums(session: DatabaseSession) -> list[AlbumSummary]:
     return list_albums(session)
+
+
+@router.post("/albums", response_model=AlbumSummary, status_code=201, tags=["albums"])
+def post_album(definition: AlbumCreate, session: DatabaseSession) -> AlbumSummary:
+    return create_saved_album(session, definition)
 
 
 @router.get("/albums/{album_id}/photos", response_model=PhotoPage, tags=["albums"])
@@ -52,11 +59,11 @@ def get_album_photos(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> PhotoPage:
     try:
-        filters = album_filters(album_id)
+        filters = album_filters(session, album_id)
     except ValueError as error:
         raise HTTPException(status_code=404, detail="Album not found") from error
     page = photo_page(session, filters, limit, offset)
-    if page.total == 0 and album_id not in {"all", "undated"}:
+    if page.total == 0 and album_id.startswith(("year-", "month-")):
         raise HTTPException(status_code=404, detail="Album not found")
     return page
 

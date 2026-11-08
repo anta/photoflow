@@ -5,9 +5,9 @@ existing photo tree, stores selected metadata in SQLite, and serves a browsing A
 with thumbnails. Original photo contents, filenames, and organization stay untouched.
 No cloud service, telemetry, or external account is required.
 
-PhotoFlow provides indexing and date-based virtual albums for NAS owners who want
-to browse their photo libraries locally. Saved album rules, ongoing automatic
-indexing, and an album web interface are planned in the [roadmap](docs/roadmap.md).
+PhotoFlow provides indexing and virtual albums for NAS owners who want to browse
+their photo libraries locally. Ongoing automatic indexing, GPS album rules, and an
+album web interface are planned in the [roadmap](docs/roadmap.md).
 
 ## What's implemented
 
@@ -19,6 +19,7 @@ indexing, and an album web interface are planned in the [roadmap](docs/roadmap.m
 - Incremental indexing, retryable file failures, missing-file tracking, and a process lock.
 - Paginated photo browsing, literal path search, photo details, health checks, and OpenAPI.
 - Virtual all-photos, year, month, and undated albums derived from the current index.
+- Saved, named date-range albums with overlapping membership and persistent rules.
 - Orientation-correct Pillow thumbnails with EXIF and other source metadata removed.
 - Synthetic-image unit and integration tests, Docker Compose, and GitHub Actions.
 
@@ -72,6 +73,19 @@ conversion. Missing photos and records with indexing errors are excluded. Albums
 update when indexing results change; originals stay in place and no album copies
 are created. See the [API documentation](docs/api.md#virtual-albums) for IDs and ordering.
 
+Create a named album using inclusive calendar dates:
+
+```sh
+curl -X POST 'http://127.0.0.1:8000/api/v1/albums' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Summer 2024","rule":{"version":1,"type":"date_range","start_date":"2024-06-01","end_date":"2024-08-31"}}'
+```
+
+The response includes a stable `saved-...` ID. Browse its members through
+`/api/v1/albums/{album_id}/photos`; saved albums remain listed even when empty.
+Existing installations must run `photoflow migrate` after upgrading and before
+native serving. Compose startup applies the migration automatically.
+
 ## Docker Compose
 
 Set `PHOTOFLOW_NAS_ROOT` in `.env` to an existing absolute host path. The container
@@ -114,7 +128,7 @@ photos. Thumbnails remain private visual data even after metadata removal.
 Application code opens originals read-only and skips internal symlinks. Native
 filesystem reads may still update access times; a read-only NAS mount provides
 the operating-system boundary. Only the listed formats are supported; HEIC, RAW,
-video, saved/custom album rules, duplicate matching, and file organization are not
+video, GPS album rules, duplicate matching, and file organization are not
 implemented.
 
 Never commit private photos, local databases, `.env`, logs, or sensitive metadata.

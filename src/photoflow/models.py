@@ -1,8 +1,8 @@
 """SQLAlchemy models for a single NAS library and its indexing history."""
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Float, Integer, String, Text
+from sqlalchemy import BigInteger, CheckConstraint, Date, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -16,6 +16,22 @@ class Library(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     root_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class SavedAlbum(Base):
+    __tablename__ = "saved_albums"
+    __table_args__ = (
+        CheckConstraint("length(name) BETWEEN 1 AND 128", name="album_name_length"),
+        CheckConstraint("rule_version = 1", name="album_rule_version"),
+        CheckConstraint("start_date <= end_date", name="album_date_range"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    rule_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
 
 
 class ScanRun(Base):

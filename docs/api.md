@@ -1,7 +1,8 @@
 # REST API
 
 OpenAPI is available at `/openapi.json`, Swagger at `/docs`, and ReDoc at `/redoc`.
-The MVP exposes browsing only. There are no HTTP indexing or mutation endpoints.
+The API browses photos and creates saved album definitions in local state.
+There are no HTTP indexing or original-file mutation endpoints.
 
 | Method / path | Response |
 | --- | --- |
@@ -10,6 +11,7 @@ The MVP exposes browsing only. There are no HTTP indexing or mutation endpoints.
 | `GET /api/v1/photos/{id}` | One record with camera and GPS metadata |
 | `GET /api/v1/photos/{id}/thumbnail` | Metadata-free JPEG |
 | `GET /api/v1/albums` | Virtual album summaries |
+| `POST /api/v1/albums` | `201` saved date-range album summary and rule |
 | `GET /api/v1/albums/{album_id}/photos` | Paginated photo summaries for one album |
 
 ## Listing
@@ -80,10 +82,11 @@ suppresses the thumbnail URL until a successful retry.
 ]
 ```
 
-IDs describe rules and remain stable as counts change. The list starts with `all`,
-then years newest first, each followed by its months newest first, and ends with
-`undated`. Year/month albums appear only when nonempty. All photos and Undated
-are always listed, including for an empty library. The summary list is unpaginated.
+Automatic IDs describe rules and remain stable as counts change. The list starts
+with `all`, then years newest first, each followed by its months newest first,
+then `undated`. Year/month albums appear only when nonempty. All photos and Undated
+are always listed, including for an empty library. Saved albums follow Undated in
+creation/ID order and remain listed even when empty. The summary list is unpaginated.
 Year and month labels use fixed ISO calendar notation, independent of server locale.
 
 `GET /api/v1/albums/month-2024-02/photos?limit=20&offset=0` returns the same
@@ -94,7 +97,7 @@ past the last member returns an empty page with that total. Invalid IDs and empt
 year/month albums return `404 {"detail":"Album not found"}`. Invalid pagination
 parameters return 422.
 
-Every generated album, including `all` and `undated`, excludes missing photos and
+Every album, including saved albums, `all`, and `undated`, excludes missing photos and
 records with a non-null `index_error`. There is no inclusion override. Ordinary
 `/photos` browsing retains its existing behavior: errors remain visible, and
 missing records can be included explicitly.
@@ -110,6 +113,59 @@ membership rows. Reindexing date changes, new files, missing originals, and succ
 retries update subsequent responses automatically. Scanning remains manual.
 Counts and page positions can change during concurrent indexing; separate requests
 do not share a snapshot. Album responses use the same privacy headers as photos.
+
+## Saved date-range albums
+
+`POST /api/v1/albums` accepts a name and a versioned rule. Both dates are inclusive:
+
+```json
+{
+  "name": "Summer 2024",
+  "rule": {
+    "version": 1,
+    "type": "date_range",
+    "start_date": "2024-06-01",
+    "end_date": "2024-08-31"
+  }
+}
+```
+
+The `201` response includes the current count and the persisted rule:
+
+```json
+{
+  "id": "saved-1",
+  "label": "Summer 2024",
+  "photo_count": 2,
+  "rule": {
+    "version": 1,
+    "type": "date_range",
+    "start_date": "2024-06-01",
+    "end_date": "2024-08-31"
+  }
+}
+```
+
+Saved summaries in `GET /api/v1/albums` include the same `rule` object; automatic
+summaries retain their existing three fields. Browse a saved album at
+`GET /api/v1/albums/saved-1/photos` using the usual pagination. Empty saved albums
+return 200 with an empty page and zero total; unknown/malformed saved IDs return 404.
+Names are trimmed, must contain 1–128 characters, and need not be unique. IDs do
+not depend on names, dates, or list positions. Names are display text, not SQL.
+
+Version `1` and type `date_range` are required. Dates must be valid `YYYY-MM-DD`
+calendar dates from year 0001 through 9999, with `start_date <= end_date`.
+Equal dates select one whole day, including fractional seconds at its end. Offset
+conversion is never applied. Undated records cannot match a date-range rule.
+Unknown fields, unsupported types/versions, timestamps, and invalid/reversed
+ranges return 422 without saving a definition. Arbitrary SQL and executable
+expressions are not accepted.
+
+Only definitions are stored. Membership remains dynamic through indexing and
+restart, and overlapping saved/automatic albums refer to the same Photo IDs.
+Creating an album writes only to SQLite in the state directory; it never scans,
+opens, copies, or modifies originals. Album editing/deletion and GPS rules are not
+implemented in this slice. The existing unauthenticated loopback boundary remains.
 
 ## Errors and privacy
 

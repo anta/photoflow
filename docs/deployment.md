@@ -57,7 +57,7 @@ The port binds only to loopback. For remote browsing, configure a reverse proxy
 with authentication and TLS and restrict access to a trusted network. There is no
 built-in user/account system in this MVP. Do not expose the API directly online.
 
-## Indexing, recovery, and thumbnails
+## Indexing, recovery, albums, and thumbnails
 
 ```sh
 docker compose exec photoflow photoflow index
@@ -76,6 +76,11 @@ new path record and mark the old one missing; no rename or duplicate matching is
 performed. A failed update retains older metadata with `index_error` set until a
 successful retry. Failed new files are counted but not added to the photo table.
 
+Automatic and saved album membership reflects those index updates without a
+rebuild. Missing/error records are excluded from every album. Saved names and date
+rules live in SQLite and remain available even with no matching photos; protect
+them with the index. The API can create definitions but scanning remains manual.
+
 Thumbnails are lazy JPEGs. The cache key includes the record, file stat signature,
 size/quality settings, and rendering version. A changed source returns HTTP 409
 until reindexed. Old cache generations are not garbage-collected in this MVP.
@@ -90,6 +95,10 @@ API is available. Native deployments run `photoflow migrate` explicitly before
 `photoflow serve`. Back up before migrations; schema downgrades can discard index
 data. Alembic development commands are available via `alembic.ini`.
 
+Revision `0002` introduces saved date-range album definitions. It does not rewrite
+existing photo records. Downgrading to `0001` drops saved definitions while keeping
+photos and scan history; a later upgrade does not restore those definitions.
+
 The complete stopped state volume is safe to copy. For live SQLite backups, use
 SQLite's backup API; copying only the main database while WAL is active can omit
 committed changes. Thumbnails can be regenerated, but backups still contain private
@@ -103,6 +112,6 @@ bash scripts/docker-smoke.sh
 ```
 
 The script creates a temporary PNG, starts an isolated Compose project with a
-random loopback port, indexes it, checks browsing and thumbnails, and verifies
-that source writes fail. Its temporary containers and volumes are removed on exit.
+random loopback port, indexes it, checks browsing, date/saved albums, and thumbnails,
+and verifies that source writes fail. Its temporary containers and volumes are removed on exit.
 It never uses `.env` or real photo paths. GitHub Actions runs this same smoke check.

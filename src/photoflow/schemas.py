@@ -1,8 +1,18 @@
 """Public API fields; internal fingerprints and filesystem timestamps stay private."""
 
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime
+from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, computed_field, field_serializer
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    StringConstraints,
+    computed_field,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
 
 
 class PhotoSummary(BaseModel):
@@ -48,7 +58,46 @@ class PhotoPage(BaseModel):
     offset: int
 
 
+class DateRangeRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1]
+    type: Literal["date_range"]
+    start_date: date
+    end_date: date
+
+    @field_validator("version", mode="before")
+    @classmethod
+    def validate_version(cls, value):
+        if type(value) is not int or value != 1:
+            raise ValueError("Unsupported rule version")
+        return value
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def validate_calendar_date(cls, value):
+        if type(value) is date:
+            return value
+        if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value) is None:
+            raise ValueError("Use a calendar date in YYYY-MM-DD format")
+        return value
+
+    @model_validator(mode="after")
+    def validate_date_order(self) -> Self:
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must be on or before end_date")
+        return self
+
+
+class AlbumCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+    rule: DateRangeRule
+
+
 class AlbumSummary(BaseModel):
     id: str
     label: str
     photo_count: int
+    rule: DateRangeRule | None = None

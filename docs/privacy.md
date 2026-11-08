@@ -9,12 +9,14 @@ downloads are part of installation, not indexing or browsing.
 
 SQLite contains relative paths, file sizes and stat signatures, source dimensions
 and format, orientation, capture times and offsets, camera make/model, and signed
-GPS coordinates where present. It also stores scan summaries and a hashed root-path
-binding. It does not retain raw EXIF JSON, camera serial numbers, owner/contact
-fields, face recognition results, or absolute NAS source paths.
+GPS coordinates where present. It also stores saved album names/date rules, scan
+summaries, and a hashed root-path binding. It does not retain raw EXIF JSON, camera
+serial numbers, owner/contact fields, face recognition results, or absolute NAS source paths.
 
 Capture times and GPS can be sensitive even without raw EXIF. The unauthenticated
 detail endpoint exposes those selected fields to anyone who can access the API.
+Saved album names and rules may reveal personal events or date ranges and are
+returned by album listing. Album creation persists these definitions only in local state.
 Protect the data volume, backups, reverse proxy, and network boundary accordingly.
 The thumbnail cache contains recognizable visual data, even though metadata is
 removed. Responses request private, nonpersistent client caching. Uvicorn access

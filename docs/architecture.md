@@ -19,7 +19,8 @@ tree; the separate writable state directory contains the index, lock, and cache.
 ## Data flow
 
 1. Settings canonicalize the configured paths and reject overlapping state/NAS trees.
-2. Explicit migrations create `photos`, `scan_runs`, and a singleton `library` binding.
+2. Explicit migrations create `photos`, `scan_runs`, a singleton `library` binding,
+   and `saved_albums` definitions.
 3. The scanner visits regular files with case-insensitive supported extensions.
 4. Indexing compares size, nanosecond mtime, and ctime with the existing path record.
 5. Changed/new files are opened read-only and fed to ExifTool via stdin. Only a
@@ -30,7 +31,8 @@ tree; the separate writable state directory contains the index, lock, and cache.
 7. FastAPI reads the database through short-lived SQLAlchemy sessions. Thumbnail
    requests verify the indexed source signature and produce a private cached JPEG.
 8. Virtual album queries group the current eligible records by capture year/month
-   or a null capture time. There is no album directory, copied photo, or membership table.
+   or a null capture time, and resolve saved date ranges. There is no album directory,
+   copied photo, or membership table.
 
 `library.root_fingerprint` hashes the configured canonical root path to prevent
 accidentally using one database with a different path. It is not a content hash,
@@ -58,7 +60,7 @@ atomically renamed; simultaneous rendering can safely converge on one cache file
 
 ## Virtual date albums
 
-Albums derive their membership at query time from `photos`: `all`, `undated`,
+Automatic albums derive their membership at query time from `photos`: `all`, `undated`,
 `year-YYYY`, and `month-YYYY-MM`. A record can appear in all-photos, a year, and a
 month at once while retaining one Photo ID. The existing schema is sufficient;
 this feature requires no new migration or rebuild step.
@@ -77,6 +79,27 @@ timezones. Unknown/invalid capture dates enter Undated; mtime is never substitut
 Album counts and pages use identical eligibility and date rules. Requests are not
 a snapshot across concurrent indexing; list counts or page positions may change.
 
+## Saved album definitions
+
+Alembic revision `0002` adds `saved_albums` with an autoincrement ID, name,
+`rule_version`, `start_date`, and `end_date`. It preserves the existing library,
+Photo IDs/metadata, and scan history. Downgrading to `0001` removes only saved
+definitions; upgrading again cannot recover those definitions without a backup.
+
+The API accepts a validated version-1 `date_range` rule, rejecting unknown fields
+and executable expressions. The current table represents that rule type explicitly
+with date columns rather than arbitrary SQL or unvalidated JSON. Both dates are
+inclusive in camera calendar time. Contents and summaries use the same timestamp
+bounds, including a safe open upper bound for 9999-12-31.
+
+Stable `saved-{id}` IDs occupy a separate namespace from automatic rule IDs.
+Definitions survive empty membership, failed scans, and restarts. Multiple rules
+may match one Photo. Summaries calculate counts from eligible indexed photos per
+saved definition; no persisted membership or count cache is maintained. Album
+creation validates, inserts, and computes its initial summary in one database
+transaction, without accessing originals. Editing/deletion and other rule types
+remain separate future work.
+
 ## Deliberate limits
 
 - Supported suffixes: `.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`, `.webp`. HEIC, camera
@@ -89,5 +112,5 @@ a snapshot across concurrent indexing; list counts or page positions may change.
   fails. Thumbnail errors do not modify source files.
 - No cache garbage collection, hard record deletion, rename matching, or scan
   history API. Missing records and old cache entries remain until state is rebuilt.
-- No authentication, multi-user tenancy, saved/custom albums, GPS grouping,
+- No authentication, multi-user tenancy, saved album editing/deletion, GPS grouping,
   duplicate grouping, file organization, or full browser UI. See the [roadmap](roadmap.md).

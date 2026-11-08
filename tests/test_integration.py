@@ -160,6 +160,84 @@ def test_albums_follow_incremental_updates_missing_restore_and_retries(settings,
         }
 
 
+def test_saved_rules_survive_reindexing_and_follow_current_membership(settings, engine):
+    path = settings.nas_root / "changing.jpg"
+    write_dated_photo(path, "2024:02:29 23:59:59", "+14:00")
+    write_dated_photo(settings.nas_root / "undated.jpg")
+
+    def scan(**kwargs):
+        before = snapshot(settings.nas_root)
+        result = index_library(settings, **kwargs)
+        assert snapshot(settings.nas_root) == before
+        return result
+
+    assert scan().added == 2
+    with TestClient(create_app(settings)) as client:
+        saved = []
+        for name, start, end in (
+            ("Leap day", "2024-02-29", "2024-02-29"),
+            ("The whole year", "2024-01-01", "2024-12-31"),
+        ):
+            before = snapshot(settings.nas_root)
+            response = client.post(
+                "/api/v1/albums",
+                json={
+                    "name": name,
+                    "rule": {
+                        "version": 1,
+                        "type": "date_range",
+                        "start_date": start,
+                        "end_date": end,
+                    },
+                },
+            )
+            assert response.status_code == 201
+            saved.append(response.json())
+            assert snapshot(settings.nas_root) == before
+
+        def check_counts(*counts):
+            before = snapshot(settings.nas_root)
+            summaries = {album["id"]: album for album in client.get("/api/v1/albums").json()}
+            for album, count in zip(saved, counts, strict=True):
+                assert summaries[album["id"]] == album | {"photo_count": count}
+                response = client.get(f"/api/v1/albums/{album['id']}/photos")
+                assert response.status_code == 200
+                page = response.json()
+                assert len(page["items"]) == page["total"] == count
+            assert snapshot(settings.nas_root) == before
+
+        check_counts(1, 1)
+        first_id = client.get(f"/api/v1/albums/{saved[0]['id']}/photos").json()["items"][0]["id"]
+        write_dated_photo(path, "2024:03:01 00:00:00")
+        assert scan().updated == 1
+        check_counts(0, 1)
+        write_dated_photo(path)
+        assert scan().updated == 1
+        check_counts(0, 0)
+        write_dated_photo(path, "2024:02:29 12:00:00")
+        assert scan().updated == 1
+        check_counts(1, 1)
+        with patch(
+            "photoflow.indexer.ExifTool.extract", side_effect=MetadataError("metadata_failed")
+        ):
+            assert scan(force=True).failed == 2
+        check_counts(0, 0)
+        assert scan().updated == 2
+        check_counts(1, 1)
+        parked = settings.nas_root / "parked.txt"
+        path.rename(parked)
+        assert scan().missing == 1
+        check_counts(0, 0)
+        parked.rename(path)
+        assert scan().updated == 1
+        check_counts(1, 1)
+        restored_id = client.get(f"/api/v1/albums/{saved[0]['id']}/photos").json()["items"][0]["id"]
+        assert restored_id == first_id
+        write_dated_photo(settings.nas_root / "new.jpg", "2024:02:29 12:00:00")
+        assert scan().added == 1
+        check_counts(2, 2)
+
+
 def test_all_supported_formats_on_read_only_nas_stay_unchanged(settings, engine):
     paths = []
     for extension, format_name in (

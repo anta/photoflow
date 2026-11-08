@@ -35,6 +35,131 @@ def snapshot(root):
     }
 
 
+def write_dated_photo(path, date=None, offset=None):
+    exif = Image.Exif()
+    if date is not None:
+        exif[36867] = date
+    if offset is not None:
+        exif[36881] = offset
+    if path.exists():
+        path.chmod(0o644)
+    Image.new("RGB", (96, 64), "blue").save(path, exif=exif)
+    path.chmod(0o444)
+
+
+def album_counts(client):
+    response = client.get("/api/v1/albums")
+    assert response.status_code == 200
+    albums = response.json()
+    for album in albums:
+        page = client.get(f"/api/v1/albums/{album['id']}/photos").json()
+        assert len(page["items"]) == page["total"] == album["photo_count"]
+    return {album["id"]: album["photo_count"] for album in albums}
+
+
+def test_date_albums_from_real_exif_leave_read_only_originals_unchanged(settings, engine):
+    for name, date, offset in (
+        ("year-end.jpg", "2023:12:31 23:59:59", "-12:00"),
+        ("new-year.jpg", "2024:01:01 00:00:00", "+14:00"),
+        ("unknown-offset.jpg", "2024:01:15 12:00:00", None),
+        ("invalid-date.jpg", "0000:00:00 00:00:00", None),
+        ("no-date.jpg", None, None),
+    ):
+        write_dated_photo(settings.nas_root / name, date, offset)
+    settings.nas_root.chmod(0o555)
+    before = snapshot(settings.nas_root)
+    try:
+        assert index_library(settings).added == 5
+        with TestClient(create_app(settings)) as client:
+            assert album_counts(client) == {
+                "all": 5,
+                "year-2024": 2,
+                "month-2024-01": 2,
+                "year-2023": 1,
+                "month-2023-12": 1,
+                "undated": 2,
+            }
+            january = client.get("/api/v1/albums/month-2024-01/photos").json()["items"]
+            assert [item["captured_at_offset"] for item in january] == ["+14:00", None]
+            for item in january:
+                assert client.get(item["thumbnail_url"]).status_code == 200
+        assert index_library(settings).unchanged == 5
+        assert snapshot(settings.nas_root) == before
+    finally:
+        settings.nas_root.chmod(0o755)
+        for path in settings.nas_root.iterdir():
+            path.chmod(0o644)
+
+
+def test_albums_follow_incremental_updates_missing_restore_and_retries(settings, engine):
+    path = settings.nas_root / "changing.jpg"
+    write_dated_photo(path, "2024:01:15 12:00:00")
+
+    def index_unchanged_sources(**kwargs):
+        before = snapshot(settings.nas_root)
+        result = index_library(settings, **kwargs)
+        assert snapshot(settings.nas_root) == before
+        return result
+
+    assert index_unchanged_sources().added == 1
+    with TestClient(create_app(settings)) as client:
+        assert album_counts(client) == {
+            "all": 1,
+            "year-2024": 1,
+            "month-2024-01": 1,
+            "undated": 0,
+        }
+        photo_id = client.get("/api/v1/albums/all/photos").json()["items"][0]["id"]
+
+        write_dated_photo(path, "2025:02:15 12:00:00")
+        assert index_unchanged_sources().updated == 1
+        assert album_counts(client) == {
+            "all": 1,
+            "year-2025": 1,
+            "month-2025-02": 1,
+            "undated": 0,
+        }
+        assert client.get("/api/v1/albums/year-2024/photos").status_code == 404
+
+        # Clearing capture metadata moves the same record to Undated, without mtime fallback.
+        write_dated_photo(path)
+        assert index_unchanged_sources().updated == 1
+        assert album_counts(client) == {"all": 1, "undated": 1}
+        write_dated_photo(settings.nas_root / "new.jpg", "2026:03:15 12:00:00")
+        assert index_unchanged_sources().added == 1
+        assert album_counts(client) == {
+            "all": 2,
+            "year-2026": 1,
+            "month-2026-03": 1,
+            "undated": 1,
+        }
+
+        parked = settings.nas_root / "parked.txt"
+        path.rename(parked)
+        assert index_unchanged_sources().missing == 1
+        assert album_counts(client)["undated"] == 0
+        assert album_counts(client)["all"] == 1
+        parked.rename(path)
+        assert index_unchanged_sources().updated == 1
+        assert album_counts(client)["undated"] == 1
+        assert client.get("/api/v1/albums/undated/photos").json()["items"][0]["id"] == photo_id
+
+        # Failed updates retain old metadata but remove records from every generated album.
+        with patch(
+            "photoflow.indexer.ExifTool.extract", side_effect=MetadataError("metadata_failed")
+        ):
+            assert index_unchanged_sources(force=True).failed == 2
+        assert album_counts(client) == {"all": 0, "undated": 0}
+        assert client.get("/api/v1/photos").json()["total"] == 2
+        assert index_unchanged_sources().updated == 2
+        assert album_counts(client) == {
+            "all": 2,
+            "year-2026": 1,
+            "month-2026-03": 1,
+            "undated": 1,
+        }
+
+
 def test_all_supported_formats_on_read_only_nas_stay_unchanged(settings, engine):
     paths = []
     for extension, format_name in (

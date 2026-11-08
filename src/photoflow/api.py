@@ -1,4 +1,4 @@
-"""Read-only photo browsing routes."""
+"""Read-only photo and virtual album browsing routes."""
 
 from collections.abc import Iterator
 from typing import Annotated
@@ -6,12 +6,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.elements import ColumnElement
 
+from photoflow.albums import album_filters, list_albums
 from photoflow.models import Photo
-from photoflow.schemas import PhotoDetail, PhotoPage
+from photoflow.schemas import AlbumSummary, PhotoDetail, PhotoPage
 from photoflow.thumbnails import ThumbnailError, ThumbnailService
 
-router = APIRouter(prefix="/api/v1", tags=["photos"])
+router = APIRouter(prefix="/api/v1")
 
 
 def get_session(request: Request) -> Iterator[Session]:
@@ -23,7 +25,43 @@ DatabaseSession = Annotated[Session, Depends(get_session)]
 PhotoId = Annotated[int, Path(ge=1)]
 
 
-@router.get("/photos", response_model=PhotoPage)
+def photo_page(
+    session: Session, filters: list[ColumnElement[bool]], limit: int, offset: int
+) -> PhotoPage:
+    total = session.scalar(select(func.count()).select_from(Photo).where(*filters))
+    photos = session.scalars(
+        select(Photo)
+        .where(*filters)
+        .order_by(Photo.relative_path, Photo.id)
+        .limit(limit)
+        .offset(offset)
+    ).all()
+    return PhotoPage(items=photos, total=total, limit=limit, offset=offset)
+
+
+@router.get("/albums", response_model=list[AlbumSummary], tags=["albums"])
+def get_albums(session: DatabaseSession) -> list[AlbumSummary]:
+    return list_albums(session)
+
+
+@router.get("/albums/{album_id}/photos", response_model=PhotoPage, tags=["albums"])
+def get_album_photos(
+    album_id: str,
+    session: DatabaseSession,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> PhotoPage:
+    try:
+        filters = album_filters(album_id)
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail="Album not found") from error
+    page = photo_page(session, filters, limit, offset)
+    if page.total == 0 and album_id not in {"all", "undated"}:
+        raise HTTPException(status_code=404, detail="Album not found")
+    return page
+
+
+@router.get("/photos", response_model=PhotoPage, tags=["photos"])
 def list_photos(
     session: DatabaseSession,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -36,15 +74,7 @@ def list_photos(
         filters.append(Photo.is_missing.is_(False))
     if query is not None:
         filters.append(Photo.relative_path.contains(query, autoescape=True))
-    total = session.scalar(select(func.count()).select_from(Photo).where(*filters))
-    photos = session.scalars(
-        select(Photo)
-        .where(*filters)
-        .order_by(Photo.relative_path, Photo.id)
-        .limit(limit)
-        .offset(offset)
-    ).all()
-    return PhotoPage(items=photos, total=total, limit=limit, offset=offset)
+    return photo_page(session, filters, limit, offset)
 
 
 def find_photo(session: Session, photo_id: int) -> Photo:
@@ -54,7 +84,7 @@ def find_photo(session: Session, photo_id: int) -> Photo:
     return photo
 
 
-@router.get("/photos/{photo_id}", response_model=PhotoDetail)
+@router.get("/photos/{photo_id}", response_model=PhotoDetail, tags=["photos"])
 def get_photo(photo_id: PhotoId, session: DatabaseSession) -> Photo:
     return find_photo(session, photo_id)
 
@@ -62,6 +92,7 @@ def get_photo(photo_id: PhotoId, session: DatabaseSession) -> Photo:
 @router.get(
     "/photos/{photo_id}/thumbnail",
     response_class=Response,
+    tags=["photos"],
     responses={
         200: {"content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}}}
     },

@@ -46,3 +46,9 @@ class PhotoPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class AlbumSummary(BaseModel):
+    id: str
+    label: str
+    photo_count: int

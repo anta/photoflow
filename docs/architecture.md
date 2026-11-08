@@ -1,4 +1,4 @@
-# MVP architecture
+# Architecture
 
 PhotoFlow has one local library per SQLite database. The NAS root is an input-only
 tree; the separate writable state directory contains the index, lock, and cache.
@@ -11,6 +11,7 @@ tree; the separate writable state directory contains the index, lock, and cache.
 | `metadata.py` | Bounded ExifTool subprocess, JSON parsing, metadata allowlist |
 | `models.py`, `db.py`, `migrations/` | SQLAlchemy tables, sessions, Alembic lifecycle |
 | `indexer.py`, `locking.py` | Serialized incremental indexing and recovery |
+| `albums.py` | Query-time calendar album summaries and membership rules |
 | `api.py`, `schemas.py`, `main.py` | FastAPI browsing and startup/readiness checks |
 | `thumbnails.py` | Pillow rendering and atomic cache publication |
 | `cli.py` | `migrate`, `index [--force]`, and `serve` |
@@ -28,6 +29,8 @@ tree; the separate writable state directory contains the index, lock, and cache.
    remain retryable; directory traversal errors suppress the sweep.
 7. FastAPI reads the database through short-lived SQLAlchemy sessions. Thumbnail
    requests verify the indexed source signature and produce a private cached JPEG.
+8. Virtual album queries group the current eligible records by capture year/month
+   or a null capture time. There is no album directory, copied photo, or membership table.
 
 `library.root_fingerprint` hashes the configured canonical root path to prevent
 accidentally using one database with a different path. It is not a content hash,
@@ -53,6 +56,27 @@ flattened against white when transparent, and saved without source EXIF/XMP/ICC.
 Pillow's decompression-bomb checks remain enabled. Temporary cache writes are
 atomically renamed; simultaneous rendering can safely converge on one cache file.
 
+## Virtual date albums
+
+Albums derive their membership at query time from `photos`: `all`, `undated`,
+`year-YYYY`, and `month-YYYY-MM`. A record can appear in all-photos, a year, and a
+month at once while retaining one Photo ID. The existing schema is sufficient;
+this feature requires no new migration or rebuild step.
+
+Both summaries and contents exclude `is_missing=true` and non-null `index_error`.
+Retained metadata from failed indexing therefore cannot silently generate current
+album membership. The ordinary photo/detail APIs still expose those records for
+diagnosis. Successful rescans, missing-file sweeps, and retries change album results
+as their database updates commit. Browsing never starts indexing or opens originals.
+
+Capture timestamps are stored as naive ISO camera wall times in SQLite, with a
+separate optional offset. Summary queries group the stored year/month text without
+date-function rounding; content queries use inclusive start and exclusive end
+bounds on the indexed `captured_at` column. Neither applies offsets or server
+timezones. Unknown/invalid capture dates enter Undated; mtime is never substituted.
+Album counts and pages use identical eligibility and date rules. Requests are not
+a snapshot across concurrent indexing; list counts or page positions may change.
+
 ## Deliberate limits
 
 - Supported suffixes: `.jpg`, `.jpeg`, `.png`, `.tif`, `.tiff`, `.webp`. HEIC, camera
@@ -65,5 +89,5 @@ atomically renamed; simultaneous rendering can safely converge on one cache file
   fails. Thumbnail errors do not modify source files.
 - No cache garbage collection, hard record deletion, rename matching, or scan
   history API. Missing records and old cache entries remain until state is rebuilt.
-- No authentication, multi-user tenancy, smart albums, duplicate grouping, file
-  organization, or full browser UI. See the [roadmap](roadmap.md).
+- No authentication, multi-user tenancy, saved/custom albums, GPS grouping,
+  duplicate grouping, file organization, or full browser UI. See the [roadmap](roadmap.md).

@@ -5,10 +5,9 @@ existing photo tree, stores selected metadata in SQLite, and serves a browsing A
 with thumbnails. Original photo contents, filenames, and organization stay untouched.
 No cloud service, telemetry, or external account is required.
 
-This initial release provides the indexing foundation for NAS owners who want to
-browse their photo libraries locally. Virtual smart albums, duplicate detection,
-physical file organization, and a full album web interface are planned in the
-[roadmap](docs/roadmap.md).
+PhotoFlow provides indexing and date-based virtual albums for NAS owners who want
+to browse their photo libraries locally. Saved album rules, ongoing automatic
+indexing, and an album web interface are planned in the [roadmap](docs/roadmap.md).
 
 ## What's implemented
 
@@ -19,6 +18,7 @@ physical file organization, and a full album web interface are planned in the
   and camera make/model; absent metadata stays null.
 - Incremental indexing, retryable file failures, missing-file tracking, and a process lock.
 - Paginated photo browsing, literal path search, photo details, health checks, and OpenAPI.
+- Virtual all-photos, year, month, and undated albums derived from the current index.
 - Orientation-correct Pillow thumbnails with EXIF and other source metadata removed.
 - Synthetic-image unit and integration tests, Docker Compose, and GitHub Actions.
 
@@ -57,6 +57,8 @@ Browse API documentation at <http://127.0.0.1:8000/docs> or try:
 
 ```sh
 curl 'http://127.0.0.1:8000/api/v1/photos?limit=20&offset=0'
+curl 'http://127.0.0.1:8000/api/v1/albums'
+curl 'http://127.0.0.1:8000/api/v1/albums/all/photos?limit=20&offset=0'
 curl 'http://127.0.0.1:8000/api/v1/photos/1'
 curl 'http://127.0.0.1:8000/api/v1/photos/1/thumbnail' -o /tmp/photoflow-thumbnail.jpg
 ```
@@ -64,6 +66,11 @@ curl 'http://127.0.0.1:8000/api/v1/photos/1/thumbnail' -o /tmp/photoflow-thumbna
 Run `photoflow index` again to discover changes, or `photoflow index --force` to
 re-extract all metadata. Indexing returns a JSON summary and exits nonzero for a
 partial or failed scan. Browsing never starts an index scan.
+
+Albums group photos by the camera's stored calendar date, without timezone
+conversion. Missing photos and records with indexing errors are excluded. Albums
+update when indexing results change; originals stay in place and no album copies
+are created. See the [API documentation](docs/api.md#virtual-albums) for IDs and ordering.
 
 ## Docker Compose
 
@@ -107,7 +114,8 @@ photos. Thumbnails remain private visual data even after metadata removal.
 Application code opens originals read-only and skips internal symlinks. Native
 filesystem reads may still update access times; a read-only NAS mount provides
 the operating-system boundary. Only the listed formats are supported; HEIC, RAW,
-video, album generation, duplicate matching, and file organization are out of scope.
+video, saved/custom album rules, duplicate matching, and file organization are not
+implemented.
 
 Never commit private photos, local databases, `.env`, logs, or sensitive metadata.
 Read [architecture](docs/architecture.md), [API](docs/api.md),
